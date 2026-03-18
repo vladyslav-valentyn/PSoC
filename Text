@@ -1,0 +1,74 @@
+#include "project.h"
+
+// --- УНІФІКОВАНИЙ ВИВІД (Хелпер) ---
+// Логіка Active-Low: 0 = світиться, 1 = вимкнено
+void SetLED(uint8_t r, uint8_t g, uint8_t b) {
+    LED_R_Write(r);
+    LED_G_Write(g);
+    LED_B_Write(b);
+}
+
+int main(void)
+{
+    CyGlobalIntEnable; /* Enable global interrupts. */
+
+    // Запуск UART для логування в термінал
+    SW_Tx_UART_Start();
+    SW_Tx_UART_PutString("\r\n--- Lab 2: White / Green Blink Started ---\r\n");
+
+    uint8_t button_state = 1;
+    uint8_t last_button_state = 1;
+    
+    uint8_t color_mode = 0; // 0 = White, 1 = Green
+    uint8_t led_is_on = 0;  // Поточний стан (світиться чи ні під час миготіння)
+    uint16_t timer = 0;     // Лічильник для формування затримки миготіння (500 мс)
+
+    // Початковий стан: світлодіод вимкнений (Black)
+    SetLED(1, 1, 1);
+
+    for(;;)
+    {
+        button_state = Button_Read();
+
+        // --- ВІДЛОВЛЮВАННЯ НАТИСКАННЯ КНОПКИ (Edge Detection) ---
+        if (button_state == 0 && last_button_state == 1) // Якщо кнопку щойно натиснули
+        {
+            color_mode = !color_mode; // Перемикаємо режим: 0 -> 1, або 1 -> 0
+            
+            if (color_mode == 0) {
+                SW_Tx_UART_PutString("Mode changed: Blinking WHITE\r\n");
+            } else {
+                SW_Tx_UART_PutString("Mode changed: Blinking GREEN\r\n");
+            }
+            
+            // Одразу вмикаємо діод новим кольором, щоб реакція на кнопку була миттєвою
+            led_is_on = 1; 
+            timer = 0; // Скидаємо таймер, щоб миготіння почалося з початку
+        }
+        last_button_state = button_state;
+
+
+        // --- ЛОГІКА НЕБЛОКУЮЧОГО МИГОТІННЯ ---
+        // Замість повного зависання на CyDelay(500), ми рахуємо кроки по 10 мс
+        timer++;
+        if (timer >= 50)  // 50 кроків * 10 мс = 500 мс (півсекунди)
+        {
+            timer = 0;              // Скидаємо лічильник
+            led_is_on = !led_is_on; // Змінюємо стан: увімкнути <-> вимкнути
+        }
+
+        // --- ЗАСТОСУВАННЯ КОЛЬОРУ ЗГІДНО ВАРІАНТУ 24 ---
+        if (led_is_on) {
+            if (color_mode == 0) {
+                SetLED(0, 0, 0); // White: усі три кристали (Red, Green, Blue) увімкнені
+            } else {
+                SetLED(1, 0, 1); // Green: увімкнений тільки зелений (Red та Blue - вимкнені)
+            }
+        } else {
+            SetLED(1, 1, 1); // Black: повністю вимкнено на фазі "темряви"
+        }
+
+        // Дрібна затримка для стабільності та роботи лічильника
+        CyDelay(10); 
+    }
+}
